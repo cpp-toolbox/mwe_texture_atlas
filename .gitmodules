@@ -13,3 +13,9 @@
 [submodule "assets/shaders"]
 	path = assets/shaders
 	url = git@github.com:cpp-toolbox/shaders.git
+[submodule "src/texture_atlas"]
+	path = src/texture_atlas
+	url = git@github.com:cpp-toolbox/texture_atlas.git
+[submodule "src/render_primitives"]
+	path = src/render_primitives
+	url = git@github.com:cpp-toolbox/render_primitives.git

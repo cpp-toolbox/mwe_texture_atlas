@@ -1,5 +1,6 @@
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
+#include "texture_atlas/texture_atlas.hpp"
 #include "window/window.hpp"
 #include "shader_cache/shader_cache.hpp"
 
@@ -22,7 +23,7 @@ struct OpenGLDrawingData {
     GLuint vao_name;
 };
 
-OpenGLDrawingData prepare_drawing_data_and_opengl_drawing_data(ShaderCache &shader_cache) {
+OpenGLDrawingData prepare_drawing_data_and_opengl_drawing_data(ShaderCache &shader_cache, TextureAtlas &texture_atlas) {
     // set up vertex data (and buffer(s)) and configure vertex attributes
     // ------------------------------------------------------------------
     float vertices[] = {
@@ -32,19 +33,21 @@ OpenGLDrawingData prepare_drawing_data_and_opengl_drawing_data(ShaderCache &shad
         -0.5f, 0.5f,  0.0f  // top left
     };
     GLuint indices[] = {
-        // note that we start from 0!
-        0, 1, 3, // first Triangle
-        1, 2, 3  // second Triangle
+        0, 1, 3, // first triangle
+        1, 2, 3  // second triangle
     };
+
+    std::vector<glm::vec2> atlas_texture_coordinates = texture_atlas.get_texture_coordinates_of_sub_texture("wood");
 
     // vbo: vertex buffer object
     // vao: vertex array object
     // ibo: index buffer object
 
-    GLuint vbo_name, vao_name, ibo_name;
+    GLuint vbo_name, tcbo_name, vao_name, ibo_name;
 
     glGenVertexArrays(1, &vao_name);
     glGenBuffers(1, &vbo_name);
+    glGenBuffers(1, &tcbo_name);
     glGenBuffers(1, &ibo_name);
     // bind the Vertex Array Object first, then bind and set vertex buffer(s), and
     // then configure vertex attributes(s).
@@ -53,11 +56,19 @@ OpenGLDrawingData prepare_drawing_data_and_opengl_drawing_data(ShaderCache &shad
     glBindBuffer(GL_ARRAY_BUFFER, vbo_name);
     glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
 
+    glBindBuffer(GL_ARRAY_BUFFER, tcbo_name);
+    glBufferData(GL_ARRAY_BUFFER, atlas_texture_coordinates.size() * sizeof(glm::vec2),
+                 atlas_texture_coordinates.data(), GL_STATIC_DRAW);
+
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ibo_name);
     glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW);
 
     shader_cache.configure_vertex_attributes_for_drawables_vao(
-        vao_name, vbo_name, ShaderType::ABSOLUTE_POSITION_WITH_SOLID_COLOR, ShaderVertexAttributeVariable::POSITION);
+        vao_name, vbo_name, ShaderType::TRANSFORM_V_WITH_TEXTURES, ShaderVertexAttributeVariable::POSITION);
+
+    shader_cache.configure_vertex_attributes_for_drawables_vao(
+        vao_name, tcbo_name, ShaderType::TRANSFORM_V_WITH_TEXTURES,
+        ShaderVertexAttributeVariable::PASSTHROUGH_TEXTURE_COORDINATE);
 
     // note that this is allowed, the call to glVertexAttribPointer registered
     // vbo_name as the vertex attribute's bound vertex buffer object so afterwards
@@ -81,15 +92,13 @@ int main() {
     GLFWwindow *window = initialize_glfw_glad_and_return_window(&SCREEN_WIDTH, &SCREEN_HEIGHT, "glfw window", false,
                                                                 false, false, &live_input_state);
 
-    std::vector<ShaderType> requested_shaders = {ShaderType::ABSOLUTE_POSITION_WITH_SOLID_COLOR};
+    std::vector<ShaderType> requested_shaders = {ShaderType::TRANSFORM_V_WITH_TEXTURES};
     ShaderCache shader_cache(requested_shaders, sinks);
+    TextureAtlas texture_atlas("assets/exampleatlas.json", "assets/exampleatlas.png");
 
-    auto [vbo_name, ibo_name, vao_name] = prepare_drawing_data_and_opengl_drawing_data(shader_cache);
+    auto [vbo_name, ibo_name, vao_name] = prepare_drawing_data_and_opengl_drawing_data(shader_cache, texture_atlas);
 
     int width, height;
-
-    glm::vec4 color = glm::vec4(.5, .5, .5, 1);
-    shader_cache.set_uniform(ShaderType::ABSOLUTE_POSITION_WITH_SOLID_COLOR, ShaderUniformVariable::RGBA_COLOR, color);
 
     while (!glfwWindowShouldClose(window)) {
 
@@ -99,7 +108,9 @@ int main() {
 
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        shader_cache.use_shader_program(ShaderType::ABSOLUTE_POSITION_WITH_SOLID_COLOR);
+        shader_cache.use_shader_program(ShaderType::TRANSFORM_V_WITH_TEXTURES);
+        shader_cache.set_uniform(ShaderType::TRANSFORM_V_WITH_TEXTURES, ShaderUniformVariable::TRANSFORM,
+                                 glm::mat4(1.0f));
         glBindVertexArray(vao_name); // seeing as we only have a single VAO there's
                                      // no need to bind it every time, but we'll do
                                      // so to keep things a bit more organized
